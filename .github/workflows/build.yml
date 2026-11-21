@@ -192,7 +192,7 @@ jobs:
       run:
         working-directory: ios-app
     env:
-      KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+      KEY_PATH: ${{ github.workspace }}/../AuthKey.p8
     steps:
       - uses: actions/checkout@v4
         with:
