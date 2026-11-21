@@ -24,6 +24,7 @@ final class VoiceSessionManager: NSObject, ObservableObject, AVAudioPlayerDelega
     private var recognitionTask: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
     private var audioPlayer: AVAudioPlayer?
+    private var shouldResumeListeningAfterPlayback: Bool = false
 
     func toggleHandsFree() async {
         if state == .inactive {
@@ -113,13 +114,28 @@ final class VoiceSessionManager: NSObject, ObservableObject, AVAudioPlayerDelega
 
     func playElevenLabsAudio(data: Data, resumeListeningAfter: Bool) {
         stopAudioRecording()
+        shouldResumeListeningAfterPlayback = resumeListeningAfter
         do {
             let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            if resumeListeningAfter {
+                try audioSession.setCategory(
+                    .playAndRecord,
+                    mode: .default,
+                    options: [.defaultToSpeaker, .allowBluetooth]
+                )
+            } else {
+                // .playback plays through the iPhone speaker even when Silent Mode is on
+                try audioSession.setCategory(
+                    .playback,
+                    mode: .spokenAudio,
+                    options: [.duckOthers]
+                )
+            }
             try audioSession.setActive(true)
 
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
+            player.prepareToPlay()
             self.audioPlayer = player
             state = .speaking
             player.play()
@@ -136,7 +152,11 @@ final class VoiceSessionManager: NSObject, ObservableObject, AVAudioPlayerDelega
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
             if self.state == .speaking {
-                self.startListening()
+                if self.shouldResumeListeningAfterPlayback {
+                    self.startListening()
+                } else {
+                    self.state = .inactive
+                }
             }
         }
     }

@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import re
 from typing import AsyncGenerator
 
 import httpx
 from fastapi import HTTPException, status
 
 from app.config import ElevenLabsConfig
+
+
+def clean_text_for_speech(text: str) -> str:
+    """Strip markdown formatting so ElevenLabs reads clean natural prose."""
+    cleaned = re.sub(r"```[\s\S]*?```", " code block omitted. ", text)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"[*_~#]+", "", cleaned)
+    cleaned = re.sub(r"→", " to ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 
 class ElevenLabsTTSClient:
@@ -31,7 +43,7 @@ class ElevenLabsTTSClient:
                 detail="ElevenLabs API key is not configured in the HAOS Add-on.",
             )
 
-        clean_text = (text or "").strip()
+        clean_text = clean_text_for_speech(text or "")
         if not clean_text:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

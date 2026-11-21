@@ -224,16 +224,31 @@ final class ChatViewModel: ObservableObject {
         isStreaming = false
         activeToolStatus = nil
 
-        // Play ElevenLabs voice reply if hands-free voice mode is active
-        let shouldSpeak = (fromVoice || voiceManager.state != .inactive) && settings.autoSpeakRepliesInVoiceMode
+        // Speak every assistant reply with ElevenLabs whenever voice replies are enabled (or in hands-free mode)
+        let inHandsFreeLoop = fromVoice || voiceManager.state == .listening || voiceManager.state == .processing
+        let shouldSpeak = settings.autoSpeakRepliesInVoiceMode || inHandsFreeLoop
         if shouldSpeak, !completedReplyText.isEmpty {
             await speakWithElevenLabs(
                 text: completedReplyText,
-                resumeListeningAfter: !triggeredFaceIDPause
+                resumeListeningAfter: inHandsFreeLoop && !triggeredFaceIDPause
             )
-        } else if fromVoice && !triggeredFaceIDPause && voiceManager.state == .processing {
+        } else if inHandsFreeLoop && !triggeredFaceIDPause && voiceManager.state == .processing {
             voiceManager.startListening()
         }
+    }
+
+    func toggleVoiceReplies() {
+        var updated = settings
+        updated.autoSpeakRepliesInVoiceMode.toggle()
+        saveSettings(updated)
+        if !updated.autoSpeakRepliesInVoiceMode && voiceManager.state == .speaking {
+            voiceManager.stopHandsFreeSession()
+        }
+    }
+
+    func speakMessage(_ text: String) async {
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        await speakWithElevenLabs(text: text, resumeListeningAfter: false)
     }
 
     func approveActionWithFaceID(_ action: PendingAction) async {

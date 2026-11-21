@@ -52,7 +52,7 @@ Fill in the Add-on **Configuration** tab:
 
 In your Cloudflare Zero Trust dashboard (or Cloudflare Tunnel HAOS Add-on configuration):
 1. Add a Public Hostname (for example, `helm.yourdomain.com`).
-2. Point the service to `http://homeassistant.local:8099` (or `http://localhost:8099` depending on your tunnel setup).
+2. Point the service to `http://homeassistant.local:8098` (or whichever host port is set in the Add-on's **Network** section).
 3. Test from any terminal:
    ```bash
    curl https://helm.yourdomain.com/health

@@ -70,7 +70,7 @@ async def test_deepseek_direct_answer_and_model_lock_header(tmp_path: Path) -> N
             headers=headers,
         )
         assert resp.status_code == 200
-        assert captured_headers.get("x-ci-model-lock") == "deepseek-v4.1-flash"
+        assert captured_headers.get("x-ci-model-lock") == "true"
 
         events = parse_sse_events(resp.text)
         done_events = [d for name, d in events if name == "done"]
@@ -215,6 +215,9 @@ async def test_safe_vs_sensitive_home_assistant_actions_and_face_id_confirm(
     def mock_handler(request: httpx.Request) -> httpx.Response:
         nonlocal llm_turn
         if request.url.host == "ha.test":
+            if request.method == "GET" and request.url.path == "/api/states":
+                # Return empty states here so this test exercises the AI tool-calling path
+                return httpx.Response(200, json=[])
             body = json.loads(request.content.decode("utf-8")) if request.content else {}
             ha_calls.append((request.method, request.url.path, body))
             return httpx.Response(200, json=[{"entity_id": body.get("entity_id")}])
@@ -395,3 +398,88 @@ async def test_safe_vs_sensitive_home_assistant_actions_and_face_id_confirm(
         )
         assert tts_resp.status_code == 200
         assert tts_resp.content == b"FAKE_MP3_AUDIO_BYTES"
+
+
+@pytest.mark.asyncio
+async def test_instant_home_assistant_fast_path_skips_ai(tmp_path: Path) -> None:
+    ai_calls = 0
+    ha_service_calls: list[tuple[str, dict[str, Any]]] = []
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        nonlocal ai_calls
+        if request.url.host in (
+            "api.cheaperinference.com",
+            "api.anthropic.com",
+            "generativelanguage.googleapis.com",
+        ):
+            ai_calls += 1
+            return httpx.Response(500)
+
+        if request.url.host == "ha.test":
+            if request.method == "GET" and request.url.path == "/api/states":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "entity_id": "light.living_room",
+                            "state": "off",
+                            "attributes": {"friendly_name": "Living Room Light"},
+                        },
+                        {
+                            "entity_id": "lock.front_door",
+                            "state": "locked",
+                            "attributes": {"friendly_name": "Front Door"},
+                        },
+                    ],
+                )
+            body = json.loads(request.content.decode("utf-8")) if request.content else {}
+            ha_service_calls.append((request.url.path, body))
+            return httpx.Response(200, json=[])
+
+        return httpx.Response(404)
+
+    mock_http = httpx.AsyncClient(transport=httpx.MockTransport(mock_handler))
+    settings = make_test_settings(tmp_path)
+    app = create_app(settings=settings, http_client=mock_http)
+    await app.state.db.init()
+    headers = {"Authorization": "Bearer test-secret-token-123"}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        t_resp = await client.post("/v1/threads", json={}, headers=headers)
+        tid = t_resp.json()["id"]
+
+        # 1. Safe HA command skips AI completely (0 LLM calls)
+        r1 = await client.post(
+            f"/v1/threads/{tid}/messages",
+            json={"content": "Turn on the living room light to 75%"},
+            headers=headers,
+        )
+        assert r1.status_code == 200
+        assert ai_calls == 0
+        assert len(ha_service_calls) == 1
+        assert ha_service_calls[0][0] == "/api/services/light/turn_on"
+        assert ha_service_calls[0][1] == {
+            "entity_id": "light.living_room",
+            "brightness_pct": 75,
+        }
+        events1 = parse_sse_events(r1.text)
+        done1 = next(d for name, d in events1 if name == "done")
+        assert done1["model"] == "ha_direct"
+
+        # 2. Sensitive HA command also skips AI (0 LLM calls) and still queues Face ID approval!
+        r2 = await client.post(
+            f"/v1/threads/{tid}/messages",
+            json={"content": "Unlock the front door"},
+            headers=headers,
+        )
+        assert r2.status_code == 200
+        assert ai_calls == 0
+        assert len(ha_service_calls) == 1  # Not executed yet until Face ID confirm
+        events2 = parse_sse_events(r2.text)
+        action_events = [d for name, d in events2 if name == "action_required"]
+        assert len(action_events) == 1
+        assert action_events[0]["entity_id"] == "lock.front_door"
+

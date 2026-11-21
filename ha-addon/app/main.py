@@ -41,13 +41,16 @@ def create_app(
     http_client: httpx.AsyncClient | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_settings()
+    shared_http = http_client or httpx.AsyncClient(timeout=60.0)
+    owns_http = http_client is None
+
     db = Database(resolved_settings.database_path)
     ha_client = HomeAssistantClient(
         base_url=resolved_settings.ha_base_url,
         token=resolved_settings.ha_token,
-        http_client=http_client,
+        http_client=shared_http,
     )
-    llm_client = LLMProviderClient(http_client=http_client)
+    llm_client = LLMProviderClient(http_client=shared_http)
     router_engine = RouterEngine(
         settings=resolved_settings,
         db=db,
@@ -56,13 +59,17 @@ def create_app(
     )
     tts_client = ElevenLabsTTSClient(
         config=resolved_settings.elevenlabs,
-        http_client=http_client,
+        http_client=shared_http,
     )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await db.init()
-        yield
+        try:
+            yield
+        finally:
+            if owns_http:
+                await shared_http.aclose()
 
     app = FastAPI(
         title="Helm AI Router",

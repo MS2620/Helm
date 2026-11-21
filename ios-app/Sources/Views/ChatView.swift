@@ -35,8 +35,13 @@ struct ChatView: View {
                         }
 
                         ForEach(viewModel.messages) { message in
-                            MessageBubbleView(message: message)
-                                .id(message.id)
+                            MessageBubbleView(
+                                message: message,
+                                onSpeak: {
+                                    Task { await viewModel.speakMessage(message.content) }
+                                }
+                            )
+                            .id(message.id)
                         }
 
                         ForEach(viewModel.pendingActions.filter { $0.status == "pending" }) { action in
@@ -97,6 +102,16 @@ struct ChatView: View {
                     .background(Color(uiColor: .secondarySystemFill), in: Capsule())
                 }
                 .accessibilityLabel("Select Model Routing Mode")
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    viewModel.toggleVoiceReplies()
+                } label: {
+                    Image(systemName: viewModel.settings.autoSpeakRepliesInVoiceMode ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .foregroundStyle(viewModel.settings.autoSpeakRepliesInVoiceMode ? Color.accentColor : Color.secondary)
+                        .accessibilityLabel("Toggle ElevenLabs Spoken Replies")
+                }
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -260,6 +275,7 @@ struct ChatView: View {
 
 struct MessageBubbleView: View {
     let message: ChatMessage
+    var onSpeak: (() -> Void)? = nil
 
     private var isUser: Bool {
         message.role == "user"
@@ -270,8 +286,23 @@ struct MessageBubbleView: View {
             if isUser { Spacer(minLength: 42) }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
-                if !isUser, let model = message.modelUsed {
-                    ModelBadgePill(modelName: model, routingReason: message.routingReason)
+                if !isUser {
+                    HStack(spacing: 8) {
+                        if let model = message.modelUsed {
+                            ModelBadgePill(modelName: model, routingReason: message.routingReason)
+                        }
+                        if let onSpeak {
+                            Button {
+                                onSpeak()
+                            } label: {
+                                Label("Speak", systemImage: "speaker.wave.2")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Speak message with ElevenLabs")
+                        }
+                    }
                 }
 
                 Text(message.content)
@@ -301,7 +332,9 @@ struct ModelBadgePill: View {
                 .font(.caption2)
             Text(displayName)
                 .font(.caption2.weight(.semibold))
-            if let reason = routingReason, !reason.isEmpty, modelName != "deepseek" && modelName != "system" {
+            if let reason = routingReason,
+               !reason.isEmpty,
+               !["deepseek", "system", "ha_direct"].contains(modelName.lowercased()) {
                 Text("• Escalated")
                     .font(.caption2)
                     .opacity(0.85)
@@ -318,6 +351,7 @@ struct ModelBadgePill: View {
         case "deepseek": return "DeepSeek v4.1-Flash"
         case "claude": return "Claude"
         case "gemini": return "Gemini"
+        case "ha_direct": return "Home Assistant (Instant)"
         case "system": return "Face ID Confirmed"
         default: return modelName.capitalized
         }
@@ -328,6 +362,7 @@ struct ModelBadgePill: View {
         case "deepseek": return "bolt.fill"
         case "claude": return "sparkles"
         case "gemini": return "globe"
+        case "ha_direct": return "house.fill"
         case "system": return "faceid"
         default: return "cpu"
         }
@@ -338,6 +373,7 @@ struct ModelBadgePill: View {
         case "deepseek": return .blue
         case "claude": return .orange
         case "gemini": return .indigo
+        case "ha_direct": return .teal
         case "system": return .green
         default: return .secondary
         }

@@ -47,7 +47,7 @@ struct SettingsView: View {
                 }
 
                 Section("Voice & ElevenLabs") {
-                    Toggle("Auto-Speak Replies in Hands-Free Mode", isOn: $draftSettings.autoSpeakRepliesInVoiceMode)
+                    Toggle("Always Speak Replies with ElevenLabs", isOn: $draftSettings.autoSpeakRepliesInVoiceMode)
                 }
 
                 Section {

@@ -5,6 +5,7 @@ from typing import Any, AsyncGenerator
 
 from app.config import Settings
 from app.database import Database
+from app.fast_ha import try_fast_ha_command
 from app.ha_client import HomeAssistantClient
 from app.providers import LLMProviderClient, ToolCall
 from app.safety import format_action_summary, is_sensitive_action, normalize_entity_ids
@@ -184,6 +185,54 @@ class RouterEngine:
         conversation.append({"role": "user", "content": user_content})
 
         choice = (model_override or "auto").strip().lower()
+
+        # Instant Home Assistant Fast-Path (0 LLM calls, <150ms) when in Auto mode
+        if choice == "auto":
+            fast_res = await try_fast_ha_command(
+                user_content=user_content,
+                ha_client=self.ha_client,
+                db=self.db,
+                settings=self.settings,
+                thread_id=thread_id,
+            )
+            if fast_res.handled:
+                fast_reason = "Instant Home Assistant Fast-Path (skipped AI)"
+                yield format_sse(
+                    "routing",
+                    {
+                        "model": "ha_direct",
+                        "escalated": False,
+                        "reason": fast_reason,
+                    },
+                )
+                if fast_res.pending_action is not None:
+                    yield format_sse("action_required", fast_res.pending_action)
+
+                for chunk in self._chunk_text(fast_res.reply_text):
+                    yield format_sse("delta", {"text": chunk})
+
+                saved_fast = await self.db.add_message(
+                    thread_id=thread_id,
+                    role="assistant",
+                    content=fast_res.reply_text,
+                    model_used="ha_direct",
+                    routing_reason=fast_reason,
+                    tool_events=fast_res.tool_events or [],
+                )
+                yield format_sse(
+                    "done",
+                    {
+                        "message_id": saved_fast["id"],
+                        "thread_id": thread_id,
+                        "model": "ha_direct",
+                        "escalated": False,
+                        "routing_reason": fast_reason,
+                        "full_text": fast_res.reply_text,
+                        "tool_events": fast_res.tool_events or [],
+                    },
+                )
+                return
+
         active_model = "deepseek" if choice == "auto" else choice
         if active_model not in ("deepseek", "claude", "gemini"):
             active_model = "deepseek"
@@ -310,6 +359,28 @@ class RouterEngine:
                             "content": json.dumps(tool_output),
                         }
                     )
+
+                # Fast exit: if the AI only called ha_call_service (no search/read tools) and all
+                # succeeded or queued Face ID confirmation, skip a second LLM round-trip.
+                if all(tc.name == "ha_call_service" for tc in turn.tool_calls):
+                    summaries: list[str] = []
+                    has_error = False
+                    for ev in tool_events[-len(turn.tool_calls) :]:
+                        if ev.get("status") == "pending_confirmation":
+                            act = ev.get("action") or {}
+                            summaries.append(
+                                f"Ready to execute **{act.get('summary', 'action')}** — please confirm with Face ID below."
+                            )
+                        elif ev.get("status") == "completed":
+                            args = ev.get("arguments") or {}
+                            summaries.append(
+                                f"Done: **{format_action_summary(str(args.get('domain', '')), str(args.get('service', '')), args.get('entity_id'), args.get('service_data'))}**."
+                            )
+                        else:
+                            has_error = True
+                    if not has_error and summaries:
+                        final_text = turn.text.strip() if turn.text and turn.text.strip() else " ".join(summaries)
+                        break
             else:
                 if not final_text:
                     final_text = "Completed the requested actions."

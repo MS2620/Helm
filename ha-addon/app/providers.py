@@ -87,7 +87,7 @@ class LLMProviderClient:
             "Authorization": f"Bearer {cfg.api_key}",
         }
         if cfg.model_lock:
-            headers["x-ci-model-lock"] = cfg.model_id
+            headers["x-ci-model-lock"] = "true"
 
         oai_messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         for m in messages:
@@ -185,7 +185,7 @@ class LLMProviderClient:
             "anthropic-version": "2023-06-01",
         }
         if cfg.model_lock:
-            headers["x-ci-model-lock"] = cfg.model_id
+            headers["x-ci-model-lock"] = "true"
 
         anth_messages: list[dict[str, Any]] = []
         for m in messages:
