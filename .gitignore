@@ -1,0 +1,23 @@
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.pytest_cache/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.env
+options.local.json
+
+# iOS / Xcode
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+.build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+.DS_Store

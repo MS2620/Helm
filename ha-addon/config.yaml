@@ -1,0 +1,84 @@
+name: "AI Router & Home Assistant Assistant"
+version: "0.1.0"
+slug: "ai_router_assistant"
+description: "Multi-model AI router (DeepSeek v4.1-Flash, Claude, Gemini) with Home Assistant control, Face ID safety gate, and ElevenLabs TTS for iPhone."
+url: "https://github.com/your-username/ai-home-assistant"
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+homeassistant_api: true
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: "AI Router HTTP/SSE API (expose via Cloudflare Tunnel)"
+options:
+  app_api_token: "change-me-to-a-long-random-secret"
+  deepseek:
+    provider_type: "openai_compatible"
+    base_url: "https://api.cheaperinference.com/v1"
+    api_key: ""
+    model_id: "deepseek-v4.1-flash"
+    model_lock: true
+  claude:
+    provider_type: "anthropic"
+    base_url: "https://api.anthropic.com"
+    api_key: ""
+    model_id: "claude-sonnet-4-20250514"
+    model_lock: false
+  gemini:
+    provider_type: "gemini"
+    base_url: "https://generativelanguage.googleapis.com"
+    api_key: ""
+    model_id: "gemini-2.5-pro"
+    model_lock: false
+  routing_prompt: >-
+    You are DeepSeek v4.1-Flash acting as the primary fast assistant and smart router.
+    Handle simple questions, casual conversation, quick calculations, and ALL Home Assistant
+    device queries or service calls directly using the provided Home Assistant tools.
+    Call escalate_to_model ONLY when the user request clearly benefits from a frontier specialist:
+    - target="claude": complex coding, software architecture, nuanced creative/long-form writing, or deep multi-step logic.
+    - target="gemini": broad research synthesis, large-context analysis, or multimodal/fact-heavy exploration.
+    Never escalate simple Home Assistant commands or everyday questions.
+  sensitive_domains:
+    - "lock"
+    - "alarm_control_panel"
+    - "cover"
+  sensitive_entities: []
+  action_ttl_seconds: 120
+  elevenlabs:
+    api_key: ""
+    voice_id: "JBFqnCBsd6RMkjVDRZzb"
+    model_id: "eleven_flash_v2_5"
+schema:
+  app_api_token: password
+  deepseek:
+    provider_type: list(openai_compatible|anthropic|gemini)
+    base_url: str
+    api_key: password
+    model_id: str
+    model_lock: bool
+  claude:
+    provider_type: list(openai_compatible|anthropic|gemini)
+    base_url: str
+    api_key: password
+    model_id: str
+    model_lock: bool
+  gemini:
+    provider_type: list(openai_compatible|anthropic|gemini)
+    base_url: str
+    api_key: password
+    model_id: str
+    model_lock: bool
+  routing_prompt: str
+  sensitive_domains:
+    - str
+  sensitive_entities:
+    - str
+  action_ttl_seconds: int(30,600)
+  elevenlabs:
+    api_key: password
+    voice_id: str
+    model_id: str

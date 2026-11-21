@@ -1,0 +1,237 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "LICENSE", ".github/ISSUE_TEMPLATE/**"]
+  pull_request:
+    paths-ignore: ["**.md", "LICENSE", ".github/ISSUE_TEMPLATE/**"]
+  merge_group:
+  workflow_dispatch:
+
+# Cancel any older in-progress run on the same branch/PR immediately when a new commit lands.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  # Runs in parallel with the iOS build — no required job waits on another.
+  backend-test:
+    name: Backend Tests (HAOS Add-on)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+
+      - name: Install uv and Python 3.12
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "ha-addon/requirements.txt"
+
+      - name: Install dependencies & run pytest
+        working-directory: ha-addon
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install -r requirements.txt pytest pytest-asyncio
+          .venv/bin/pytest -c pytest.ini tests -v
+
+  # Compiles the iPhone app (unsigned), pseudo-signs with ldid, packages AIHomeAssistant.ipa,
+  # uploads the artifact, and publishes a GitHub pre-release on every push to main.
+  build:
+    name: Build iOS IPA (Unsigned)
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      # Cache xcodegen & ldid binaries so Homebrew doesn't run on every build.
+      - name: Cache CLI tools (xcodegen & ldid)
+        id: tools-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/ci-bin
+          key: macos-tools-${{ runner.os }}-${{ runner.arch }}-xcodegen-ldid-v1
+
+      - name: Install XcodeGen & ldid (if not cached)
+        run: |
+          mkdir -p ~/.local/ci-bin
+          if [ ! -x ~/.local/ci-bin/xcodegen ] || [ ! -x ~/.local/ci-bin/ldid ]; then
+            brew install xcodegen ldid
+            cp "$(command -v xcodegen)" ~/.local/ci-bin/xcodegen
+            cp "$(command -v ldid)" ~/.local/ci-bin/ldid
+          fi
+          echo "$HOME/.local/ci-bin" >> "$GITHUB_PATH"
+
+      # Reuse compiled DerivedData output from the last build so only changed Swift files recompile.
+      - name: Restore Xcode build cache
+        uses: actions/cache@v4
+        with:
+          path: ios-app/build
+          key: derived-${{ runner.os }}-${{ hashFiles('ios-app/project.yml') }}-${{ github.sha }}
+          restore-keys: |
+            derived-${{ runner.os }}-${{ hashFiles('ios-app/project.yml') }}-
+            derived-${{ runner.os }}-
+
+      # Only recompile what changed since the cached build SHA.
+      - name: Mark changed files
+        working-directory: ${{ github.workspace }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, time
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, text=True)
+          files = git("ls-files", "ios-app").stdout.splitlines()
+          sha_file = "ios-app/build/.aihome-built-sha"
+          built = open(sha_file).read().strip() if os.path.exists(sha_file) else ""
+          diff = git("diff", "--name-only", built, "HEAD", "--", "ios-app") if built else None
+          if diff is None or diff.returncode != 0:
+              changed = set(files)
+              print("No earlier build cache to compare with; building all iOS sources")
+          else:
+              changed = set(diff.stdout.splitlines())
+              print(f"Changed since {built[:7]}: {len(changed)} iOS files")
+          old, now = 1577836800, time.time()  # 1 Jan 2020
+          for name in files:
+              if os.path.isfile(name):
+                  stamp = now if name in changed else old
+                  os.utime(name, (stamp, stamp))
+          PY
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for iOS (unsigned)
+        run: |
+          xcodebuild -version
+          xcodebuild \
+            -project AIHomeAssistant.xcodeproj \
+            -scheme AIHomeAssistant \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            SWIFT_COMPILATION_MODE=singlefile \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            build
+          echo "${{ github.sha }}" > build/.aihome-built-sha
+
+      - name: Inspect built app bundle & permissions
+        run: |
+          APP=build/Build/Products/Release-iphoneos/AIHomeAssistant.app
+          echo "--- Version ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" -c "Print :CFBundleVersion" "$APP/Info.plist"
+          echo "--- Privacy Usage Descriptions ---"
+          /usr/libexec/PlistBuddy -c "Print :NSFaceIDUsageDescription" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSSpeechRecognitionUsageDescription" "$APP/Info.plist"
+          echo "--- Files in the app ---"
+          ls -la "$APP"
+
+      # Package unsigned IPA for sideloading (AltStore / SideStore / Sideloadly / Feather).
+      # Pseudo-sign with ldid so re-signers preserve Keychain entitlements.
+      - name: Package IPA with entitlements
+        run: |
+          rm -rf Payload && mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/AIHomeAssistant.app Payload/
+          APP=Payload/AIHomeAssistant.app
+          ldid -SConfig/AIHomeAssistant.entitlements "$APP/AIHomeAssistant"
+          echo "--- Entitlements embedded in binary ---"
+          ldid -e "$APP/AIHomeAssistant"
+          zip -qry AIHomeAssistant-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIHomeAssistant-unsigned-ipa
+          path: ios-app/AIHomeAssistant-unsigned.ipa
+
+      # Publish a GitHub pre-release on every push to main with the IPA attached.
+      - name: Publish pre-release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          TITLE="AIHomeAssistant build ${{ github.run_number }}"
+          git log -1 --format='%B' | grep -v -e '^Co-Authored-By:' -e '^Claude-Session:' > notes.md || true
+          cp AIHomeAssistant-unsigned.ipa AIHomeAssistant.ipa
+          gh release create "$TAG" AIHomeAssistant.ipa \
+            --target "${{ github.sha }}" \
+            --title "$TITLE" \
+            --notes-file notes.md \
+            --prerelease
+
+  # Optional TestFlight deployment for paid Apple Developer accounts.
+  # Enable by setting repository variable ENABLE_TESTFLIGHT=true and adding:
+  # ASC_KEY_P8_BASE64, ASC_KEY_ID, ASC_ISSUER_ID, APPLE_TEAM_ID secrets.
+  testflight:
+    name: Upload to TestFlight
+    needs: [backend-test, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.ENABLE_TESTFLIGHT == 'true'
+    runs-on: macos-15
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ios-app
+    env:
+      KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Write App Store Connect API key
+        run: echo "${{ secrets.ASC_KEY_P8_BASE64 }}" | base64 --decode > "$KEY_PATH"
+
+      - name: Archive for iOS
+        run: |
+          xcodebuild \
+            -project AIHomeAssistant.xcodeproj \
+            -scheme AIHomeAssistant \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/AIHomeAssistant.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive
+
+      - name: Export and upload to TestFlight
+        run: |
+          sed "s/TEAM_ID_PLACEHOLDER/${{ secrets.APPLE_TEAM_ID }}/" ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/AIHomeAssistant.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
