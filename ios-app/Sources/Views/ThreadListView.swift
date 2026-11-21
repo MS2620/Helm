@@ -43,7 +43,7 @@ struct ThreadListView: View {
                 }
             }
         }
-        .navigationTitle("AI Home")
+        .navigationTitle("Helm")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {

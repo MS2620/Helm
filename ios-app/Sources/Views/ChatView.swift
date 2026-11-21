@@ -115,7 +115,7 @@ struct ChatView: View {
            let thread = viewModel.threads.first(where: { $0.id == id }) {
             return thread.title
         }
-        return "AI Home"
+        return "Helm"
     }
 
     private var emptyConversationState: some View {

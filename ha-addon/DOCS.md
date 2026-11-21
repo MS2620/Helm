@@ -1,6 +1,6 @@
-# AI Router & Home Assistant Assistant Add-on
+# Helm AI Router Add-on
 
-Multi-model AI router (`DeepSeek v4.1-Flash`, `Claude`, `Gemini`) with native Home Assistant control, Face ID safety confirmation gate, and ElevenLabs streaming TTS for the companion SwiftUI iPhone app.
+Multi-model AI router (`DeepSeek v4.1-Flash`, `Claude`, `Gemini`) with native Home Assistant control, Face ID safety confirmation gate, and ElevenLabs streaming TTS for the companion **Helm** SwiftUI iPhone app.
 
 ## Configuration
 

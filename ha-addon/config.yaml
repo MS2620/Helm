@@ -1,8 +1,8 @@
-name: "AI Router & Home Assistant Assistant"
+name: "Helm AI Router"
 version: "0.1.0"
-slug: "ai_router_assistant"
-description: "Multi-model AI router (DeepSeek v4.1-Flash, Claude, Gemini) with Home Assistant control, Face ID safety gate, and ElevenLabs TTS for iPhone."
-url: "https://github.com/your-username/ai-home-assistant"
+slug: "helm_ai_router"
+description: "Helm multi-model AI router (DeepSeek v4.1-Flash, Claude, Gemini) with Home Assistant control, Face ID safety gate, and ElevenLabs TTS for iPhone."
+url: "https://github.com/MS2620/Helm"
 arch:
   - aarch64
   - amd64

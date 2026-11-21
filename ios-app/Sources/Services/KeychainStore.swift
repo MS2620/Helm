@@ -3,7 +3,7 @@ import Security
 
 final class KeychainStore {
     static let shared = KeychainStore()
-    private let service = "com.personal.aihomeassistant"
+    private let service = "com.ms2620.Helm"
 
     private enum Keys {
         static let serverURL = "server_url"

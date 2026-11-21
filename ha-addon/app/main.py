@@ -65,7 +65,7 @@ def create_app(
         yield
 
     app = FastAPI(
-        title="AI Router & Home Assistant Assistant",
+        title="Helm AI Router",
         version="0.1.0",
         lifespan=lifespan,
     )
