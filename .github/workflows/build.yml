@@ -42,10 +42,10 @@ jobs:
           uv pip install -r requirements.txt pytest pytest-asyncio
           .venv/bin/pytest -c pytest.ini tests -v
 
-  # Compiles the iPhone app (unsigned), pseudo-signs with ldid, packages AIHomeAssistant.ipa,
+  # Compiles the Helm iPhone app (unsigned), pseudo-signs with ldid, packages Helm.ipa,
   # uploads the artifact, and publishes a GitHub pre-release on every push to main.
   build:
-    name: Build iOS IPA (Unsigned)
+    name: Build Helm iOS IPA (Unsigned)
     runs-on: macos-15
     timeout-minutes: 10
     permissions:
@@ -96,7 +96,7 @@ jobs:
           def git(*args):
               return subprocess.run(["git", *args], capture_output=True, text=True)
           files = git("ls-files", "ios-app").stdout.splitlines()
-          sha_file = "ios-app/build/.aihome-built-sha"
+          sha_file = "ios-app/build/.helm-built-sha"
           built = open(sha_file).read().strip() if os.path.exists(sha_file) else ""
           diff = git("diff", "--name-only", built, "HEAD", "--", "ios-app") if built else None
           if diff is None or diff.returncode != 0:
@@ -119,8 +119,8 @@ jobs:
         run: |
           xcodebuild -version
           xcodebuild \
-            -project AIHomeAssistant.xcodeproj \
-            -scheme AIHomeAssistant \
+            -project Helm.xcodeproj \
+            -scheme Helm \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
@@ -132,11 +132,11 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
             build
-          echo "${{ github.sha }}" > build/.aihome-built-sha
+          echo "${{ github.sha }}" > build/.helm-built-sha
 
       - name: Inspect built app bundle & permissions
         run: |
-          APP=build/Build/Products/Release-iphoneos/AIHomeAssistant.app
+          APP=build/Build/Products/Release-iphoneos/Helm.app
           echo "--- Version ---"
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" -c "Print :CFBundleVersion" "$APP/Info.plist"
           echo "--- Privacy Usage Descriptions ---"
@@ -151,17 +151,17 @@ jobs:
       - name: Package IPA with entitlements
         run: |
           rm -rf Payload && mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/AIHomeAssistant.app Payload/
-          APP=Payload/AIHomeAssistant.app
-          ldid -SConfig/AIHomeAssistant.entitlements "$APP/AIHomeAssistant"
+          cp -R build/Build/Products/Release-iphoneos/Helm.app Payload/
+          APP=Payload/Helm.app
+          ldid -SConfig/Helm.entitlements "$APP/Helm"
           echo "--- Entitlements embedded in binary ---"
-          ldid -e "$APP/AIHomeAssistant"
-          zip -qry AIHomeAssistant-unsigned.ipa Payload
+          ldid -e "$APP/Helm"
+          zip -qry Helm-unsigned.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AIHomeAssistant-unsigned-ipa
-          path: ios-app/AIHomeAssistant-unsigned.ipa
+          name: Helm-unsigned-ipa
+          path: ios-app/Helm-unsigned.ipa
 
       # Publish a GitHub pre-release on every push to main with the IPA attached.
       - name: Publish pre-release
@@ -170,10 +170,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="build-${{ github.run_number }}"
-          TITLE="AIHomeAssistant build ${{ github.run_number }}"
+          TITLE="Helm build ${{ github.run_number }}"
           git log -1 --format='%B' | grep -v -e '^Co-Authored-By:' -e '^Claude-Session:' > notes.md || true
-          cp AIHomeAssistant-unsigned.ipa AIHomeAssistant.ipa
-          gh release create "$TAG" AIHomeAssistant.ipa \
+          cp Helm-unsigned.ipa Helm.ipa
+          gh release create "$TAG" Helm.ipa \
             --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes-file notes.md \
@@ -210,11 +210,11 @@ jobs:
       - name: Archive for iOS
         run: |
           xcodebuild \
-            -project AIHomeAssistant.xcodeproj \
-            -scheme AIHomeAssistant \
+            -project Helm.xcodeproj \
+            -scheme Helm \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/AIHomeAssistant.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Helm.xcarchive" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$KEY_PATH" \
             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
@@ -228,7 +228,7 @@ jobs:
         run: |
           sed "s/TEAM_ID_PLACEHOLDER/${{ secrets.APPLE_TEAM_ID }}/" ExportOptions.plist > "$RUNNER_TEMP/ExportOptions.plist"
           xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/AIHomeAssistant.xcarchive" \
+            -archivePath "$RUNNER_TEMP/Helm.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
