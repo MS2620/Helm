@@ -3,14 +3,8 @@ options:
   bundleIdPrefix: com.ms2620
   deploymentTarget:
     iOS: "17.0"
-  xcodeVersion: "15.0"
+  xcodeVersion: "16.0"
   generateEmptyDirectories: true
-
-settings:
-  base:
-    SWIFT_VERSION: "5.9"
-    TARGETED_DEVICE_FAMILY: "1"
-    INFOPLIST_FILE: Sources/Info.plist
 
 targets:
   Helm:
@@ -21,20 +15,18 @@ targets:
       - path: Sources
         excludes:
           - Info.plist
-    info:
-      path: Sources/Info.plist
-      properties:
-        CFBundleDisplayName: "Helm"
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
-        UILaunchScreen: {}
-        UISupportedInterfaceOrientations:
-          - UIInterfaceOrientationPortrait
-          - UIInterfaceOrientationLandscapeLeft
-          - UIInterfaceOrientationLandscapeRight
-        NSFaceIDUsageDescription: "Verify your identity with Face ID before running sensitive Home Assistant actions such as unlocking doors, opening garage covers, or disarming alarms."
-        NSMicrophoneUsageDescription: "Used for hands-free voice commands to Helm."
-        NSSpeechRecognitionUsageDescription: "Transcribes your spoken voice commands on-device so they can be sent to Helm."
+    settings:
+      base:
+        PRODUCT_NAME: Helm
+        EXECUTABLE_NAME: Helm
+        PRODUCT_BUNDLE_IDENTIFIER: com.ms2620.Helm
+        INFOPLIST_FILE: Sources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+        ALWAYS_SEARCH_USER_PATHS: NO
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
     sdkDependencies:
       - LocalAuthentication.framework
       - Speech.framework

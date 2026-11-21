@@ -125,8 +125,6 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             SWIFT_COMPILATION_MODE=singlefile \
             COMPILER_INDEX_STORE_ENABLE=NO \

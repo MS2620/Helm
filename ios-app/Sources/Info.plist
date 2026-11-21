@@ -17,22 +17,24 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Verify your identity with Face ID before running sensitive Home Assistant actions such as unlocking doors, opening garage covers, or disarming alarms.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Used for hands-free voice commands to your AI and Home Assistant router.</string>
+	<string>Used for hands-free voice commands to Helm.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Transcribes your spoken voice commands on-device so they can be sent to your AI router.</string>
+	<string>Transcribes your spoken voice commands on-device so they can be sent to Helm.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>
