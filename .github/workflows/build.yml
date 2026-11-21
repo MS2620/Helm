@@ -59,23 +59,8 @@ jobs:
           fetch-depth: 0
           filter: blob:none
 
-      # Cache xcodegen & ldid binaries so Homebrew doesn't run on every build.
-      - name: Cache CLI tools (xcodegen & ldid)
-        id: tools-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/ci-bin
-          key: macos-tools-${{ runner.os }}-${{ runner.arch }}-xcodegen-ldid-v1
-
-      - name: Install XcodeGen & ldid (if not cached)
-        run: |
-          mkdir -p ~/.local/ci-bin
-          if [ ! -x ~/.local/ci-bin/xcodegen ] || [ ! -x ~/.local/ci-bin/ldid ]; then
-            brew install xcodegen ldid
-            cp "$(command -v xcodegen)" ~/.local/ci-bin/xcodegen
-            cp "$(command -v ldid)" ~/.local/ci-bin/ldid
-          fi
-          echo "$HOME/.local/ci-bin" >> "$GITHUB_PATH"
+      - name: Install XcodeGen & ldid
+        run: brew install xcodegen ldid
 
       # Reuse compiled DerivedData output from the last build so only changed Swift files recompile.
       - name: Restore Xcode build cache
