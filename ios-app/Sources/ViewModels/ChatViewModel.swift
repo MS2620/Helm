@@ -27,10 +27,11 @@ final class ChatViewModel: ObservableObject {
 
     init(
         apiClient: APIClient = APIClient(),
-        voiceManager: VoiceSessionManager = VoiceSessionManager()
+        voiceManager: VoiceSessionManager? = nil
     ) {
+        let resolvedVoice = voiceManager ?? VoiceSessionManager()
         self.apiClient = apiClient
-        self.voiceManager = voiceManager
+        self.voiceManager = resolvedVoice
         self.settings = KeychainStore.shared.loadSettings()
 
         self.voiceManager.onUtteranceFinalized = { [weak self] utterance in
